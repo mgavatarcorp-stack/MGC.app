@@ -1,5 +1,6 @@
 (() => {
     const KEY = "mgc.app.state.v1";
+    const SPHERAI_KERNEL_PATH = "../active/modules/spherai/spherai.kernel.html";
     const NAMES = ["Hex", "Ash", "Rook", "Nova", "Moss", "Zero", "Vex", "Ivy"];
     const BOUNTIES = [
         { title: "Convoy Break", cost: 8, reward: 20, tag: "field" },
@@ -25,6 +26,10 @@
         focusToken: null,
         nextPlayerId: 4,
         nextBountyId: 3,
+        spherai: {
+            lastSyncAt: null,
+            lastPacket: null,
+        },
         message: "Dry ground engaged.",
     });
 
@@ -40,6 +45,10 @@
             focusToken: s.focusToken || null,
             nextPlayerId: Number.isFinite(s.nextPlayerId) ? s.nextPlayerId : f.nextPlayerId,
             nextBountyId: Number.isFinite(s.nextBountyId) ? s.nextBountyId : f.nextBountyId,
+            spherai: s.spherai && typeof s.spherai === "object" ? {
+                lastSyncAt: s.spherai.lastSyncAt || null,
+                lastPacket: s.spherai.lastPacket || null,
+            } : f.spherai,
             message: s.message || f.message,
         };
     };
@@ -57,6 +66,14 @@
     const selectedPlayer = () => state.players.find((p) => p.id === state.selectedPlayerId) || state.players[0];
     const selectedBounty = () => state.bounties.find((b) => b.id === state.selectedBountyId) || state.bounties[0];
     const playerName = (id) => (state.players.find((p) => p.id === id) || {}).name || "Unknown";
+    const playerTotal = (p) => p.bounty + p.peer + p.meme;
+    const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;",
+    }[char]));
     const spend = (player, amount) => {
         let left = amount;
         for (const key of ["bounty", "peer", "meme"]) {
@@ -72,7 +89,88 @@
         { label: "Home", href: "index.html", active: page === "home" },
         { label: "Deadpool", href: "deadpool.html", active: page === "deadpool" },
         { label: "Bounty Board", href: "bounty-board.html", active: page === "bounty-board" },
+        { label: "SpherAI Link", href: "spherai.html", active: page === "spherai" },
     ];
+
+    const boardMetrics = () => {
+        const totalPoints = state.players.reduce((sum, p) => sum + playerTotal(p), 0);
+        const signupCount = state.bounties.reduce((sum, b) => sum + b.signups.length, 0);
+        const betCount = state.bounties.reduce((sum, b) => sum + b.bets.length, 0);
+        const openBounties = state.bounties.filter((b) => b.status === "open").length;
+        const resolvedBounties = state.bounties.length - openBounties;
+        const bountyPressure = totalPoints + openBounties * 7 + resolvedBounties * 3 + signupCount * 4 + betCount * 5;
+        return {
+            playerCount: state.players.length,
+            bountyCount: state.bounties.length,
+            openBounties,
+            resolvedBounties,
+            totalPoints,
+            averageScore: state.players.length ? totalPoints / state.players.length : 0,
+            signupCount,
+            betCount,
+            bountyPressure,
+        };
+    };
+
+    const signalState = (pressure) => {
+        if (pressure < 42) return "blind";
+        if (pressure < 86) return "sighted";
+        if (pressure < 144) return "resonant";
+        return "hatched";
+    };
+
+    const buildSpheraiPacket = (reason = "preview") => {
+        const metrics = boardMetrics();
+        const p = selectedPlayer();
+        const b = selectedBounty();
+        const pressure = Math.max(1, metrics.bountyPressure);
+        return {
+            type: "mgc-board-state",
+            version: 1,
+            reason,
+            timestamp: new Date().toISOString(),
+            title: "MGC Deadpool Board",
+            signal: {
+                state: signalState(pressure),
+                pressure,
+                strength: Math.min(2400, 360 + pressure * 10),
+                radius: Math.min(260, 64 + metrics.openBounties * 18 + metrics.playerCount * 7),
+                breath: Math.min(100, 24 + metrics.betCount * 8 + metrics.signupCount * 3),
+            },
+            metrics,
+            selected: {
+                operator: { id: p.id, name: p.name, total: playerTotal(p), bounty: p.bounty, peer: p.peer, meme: p.meme },
+                bounty: { id: b.id, title: b.title, cost: b.cost, reward: b.reward, tag: b.tag, status: b.status },
+            },
+            operators: state.players.map((player) => ({
+                id: player.id,
+                name: player.name,
+                total: playerTotal(player),
+                bounty: player.bounty,
+                peer: player.peer,
+                meme: player.meme,
+            })),
+            bounties: state.bounties.map((bounty) => ({
+                id: bounty.id,
+                title: bounty.title,
+                tag: bounty.tag,
+                status: bounty.status,
+                cost: bounty.cost,
+                reward: bounty.reward,
+                signups: bounty.signups.length,
+                bets: bounty.bets.length,
+            })),
+        };
+    };
+
+    const lastSyncLabel = () => {
+        if (!state.spherai.lastSyncAt) return "not synced";
+        try {
+            return new Date(state.spherai.lastSyncAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        } catch {
+            return "synced";
+        }
+    };
 
     const shell = (title, sub, body) => `
         <section class="shell">
@@ -88,7 +186,7 @@
             </header>
             ${body}
             <footer class="statusbar">
-                <span><strong>Status:</strong> ${state.message}</span>
+                <span><strong>Status:</strong> <span data-status-message>${state.message}</span></span>
                 <span>
                     <span class="legend-key"><span class="legend-badge">D</span>Move</span>
                     <span class="legend-key"><span class="legend-badge">X</span>Confirm</span>
@@ -133,6 +231,53 @@
             </section>
         `
     );
+
+    const spheraiPage = () => {
+        const preview = buildSpheraiPacket("preview");
+        const packet = state.spherai.lastPacket || preview;
+        const metrics = preview.metrics;
+        const selected = selectedPlayer();
+        const signal = preview.signal;
+        return shell(
+            "SpherAI Link",
+            "Deadpool pressure, bounty motion, and operator totals folded into a live kernel packet.",
+            `
+                <section class="workspace spherai-grid">
+                    <aside class="pane signal-pane">
+                        <div class="pane-head"><h2>Board Signal</h2><span data-spherai-last>${lastSyncLabel()}</span></div>
+                        <div class="signal-core" data-spherai-signal>
+                            <div class="signal-state">${signal.state}</div>
+                            <div class="signal-pressure">${signal.pressure}</div>
+                        </div>
+                        <div class="stat-grid compact">
+                            <div class="stat"><div class="label">Operators</div><div class="value">${metrics.playerCount}</div></div>
+                            <div class="stat"><div class="label">Bounties</div><div class="value">${metrics.openBounties}/${metrics.bountyCount}</div></div>
+                            <div class="stat"><div class="label">Points</div><div class="value">${metrics.totalPoints}</div></div>
+                        </div>
+                        <div class="summary-card bridge-summary">
+                            <div class="meta">Selected Operator</div>
+                            <div class="card-title">${esc(selected.name)}</div>
+                            <div class="card-meta">Total ${playerTotal(selected)} | Average ${metrics.averageScore.toFixed(1)} | Bets ${metrics.betCount}</div>
+                        </div>
+                        <div class="action-row bridge-actions">
+                            <button type="button" class="is-primary" data-nav-item data-action="sync-spherai" data-token="action:sync-spherai">Sync Board</button>
+                            <button type="button" data-nav-item data-action="seed-spherai" data-token="action:seed-spherai">Seed Field</button>
+                            <button type="button" data-nav-item data-action="open-spherai" data-token="action:open-spherai">Open Kernel</button>
+                        </div>
+                        <div class="card-meta" data-spherai-ack>Kernel bridge standing by.</div>
+                    </aside>
+                    <section class="pane kernel-pane">
+                        <div class="pane-head"><h2>Kernel View</h2><span>${esc(SPHERAI_KERNEL_PATH)}</span></div>
+                        <iframe id="spheraiFrame" class="kernel-frame" src="${SPHERAI_KERNEL_PATH}" title="SpherAI kernel"></iframe>
+                    </section>
+                    <section class="pane packet-pane">
+                        <div class="pane-head"><h2>Packet</h2><span>${esc(packet.reason)}</span></div>
+                        <pre id="spheraiPacket">${esc(JSON.stringify(packet, null, 2))}</pre>
+                    </section>
+                </section>
+            `
+        );
+    };
 
     const playerCard = (p) => `
         <button type="button" class="card-btn ${p.id === state.selectedPlayerId ? "is-active" : ""}" data-nav-item data-action="select-player" data-id="${p.id}" data-token="player:${p.id}">
@@ -293,6 +438,47 @@
         selectPlayer(state.players[(idx + 1) % state.players.length].id);
     };
 
+    const postSpheraiPacket = (packet) => {
+        const frame = document.getElementById("spheraiFrame");
+        if (frame && frame.contentWindow) {
+            frame.contentWindow.postMessage({ type: "mgc:spherai:seed", source: "mgc.app", packet }, "*");
+            return true;
+        }
+        return false;
+    };
+
+    const updateBridgeReadout = (packet) => {
+        const status = app.querySelector("[data-status-message]");
+        const last = app.querySelector("[data-spherai-last]");
+        const signal = app.querySelector("[data-spherai-signal]");
+        const packetEl = document.getElementById("spheraiPacket");
+        if (status) status.textContent = state.message;
+        if (last) last.textContent = lastSyncLabel();
+        if (signal) {
+            signal.querySelector(".signal-state").textContent = packet.signal.state;
+            signal.querySelector(".signal-pressure").textContent = packet.signal.pressure;
+        }
+        if (packetEl) packetEl.textContent = JSON.stringify(packet, null, 2);
+    };
+
+    const syncSpherai = (reason) => {
+        const packet = buildSpheraiPacket(reason);
+        state.spherai = { lastSyncAt: packet.timestamp, lastPacket: packet };
+        state.message = reason === "seed" ? `SpherAI field seeded from ${packet.metrics.playerCount} operators.` : "SpherAI link synced.";
+        save();
+        postSpheraiPacket(packet);
+        updateBridgeReadout(packet);
+    };
+
+    const setupSpheraiBridge = () => {
+        const frame = document.getElementById("spheraiFrame");
+        if (!frame) return;
+        const packet = state.spherai.lastPacket || buildSpheraiPacket("preview");
+        const send = () => postSpheraiPacket(packet);
+        frame.addEventListener("load", send, { once: true });
+        window.setTimeout(send, 250);
+    };
+
     const resetSeed = () => { state = seed(); save(); render(); };
     const selectPlayer = (id) => { state.selectedPlayerId = id; state.focusToken = `player:${id}`; state.message = `Operator set to ${playerName(id)}.`; save(); render(); };
     const selectBounty = (id) => { state.selectedBountyId = id; state.focusToken = `bounty:${id}`; state.message = `Bounty selected: ${selectedBounty().title}.`; save(); render(); };
@@ -312,10 +498,13 @@
         if (action === "toggle-status") return toggleStatus();
         if (action === "cycle-operator") return cycleOperator();
         if (action === "reset-seed") return resetSeed();
+        if (action === "sync-spherai") return syncSpherai("sync");
+        if (action === "seed-spherai") return syncSpherai("seed");
+        if (action === "open-spherai") return window.open(SPHERAI_KERNEL_PATH, "_blank", "noopener");
     }
 
     function render() {
-        app.innerHTML = page === "deadpool" ? deadpool() : page === "bounty-board" ? bountyBoard() : home();
+        app.innerHTML = page === "deadpool" ? deadpool() : page === "bounty-board" ? bountyBoard() : page === "spherai" ? spheraiPage() : home();
         const nodes = [...app.querySelectorAll("[data-nav-item]")];
         const focus = (state.focusToken && nodes.find((n) => n.dataset.token === state.focusToken)) || nodes[0];
         if (focus) {
@@ -324,7 +513,19 @@
             state.focusToken = focus.dataset.token;
             save();
         }
+        if (page === "spherai") setupSpheraiBridge();
     }
+
+    window.addEventListener("message", (event) => {
+        const data = event.data || {};
+        if (data.type !== "spherai:mgc:ack") return;
+        state.message = `SpherAI accepted ${data.operators} field operators.`;
+        save();
+        const ack = app.querySelector("[data-spherai-ack]");
+        const status = app.querySelector("[data-status-message]");
+        if (ack) ack.textContent = `Kernel accepted ${data.operators} operators.`;
+        if (status) status.textContent = state.message;
+    });
 
     document.addEventListener("click", (e) => {
         const button = e.target.closest("[data-action]");

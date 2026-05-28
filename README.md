@@ -22,8 +22,22 @@ You can also go directly to:
 - `index.html`
 - `deadpool.html`
 - `bounty-board.html`
+- `spherai.html`
 - `login.html`
 - `signup.html`
+
+The SpherAI bridge embeds `../active/modules/spherai/spherai.kernel.html`, so run the server from the workspace root when you want the iframe integration:
+
+```powershell
+cd ..
+python -m http.server 8000
+```
+
+Then open:
+
+```text
+http://localhost:8000/_tmp_MGC_app/spherai.html
+```
 
 ## What Is In The Repo
 
@@ -31,6 +45,7 @@ You can also go directly to:
 - `deadpool.html` is the main scoreboard-style view.
 - `app.html` is a compatibility redirect to `deadpool.html`.
 - `bounty-board.html` is the bounty management screen.
+- `spherai.html` is the SpherAI bridge and packet inspector.
 - `login.html` and `signup.html` are simple auth screens.
 - `styles.css` holds the shared presentation.
 - `app.js`, `deadpool.js`, `bounty.js`, and `users.js` hold the page logic.
@@ -43,6 +58,7 @@ The current app is deliberately simple:
 - user accounts and points live in `localStorage`
 - bounties and signups are stored locally
 - the scoreboard is a browser-rendered list
+- the SpherAI link exports the current board as a `postMessage` packet
 - the code is intentionally static so it is easy to prototype and easy to port
 
 ## How This Maps To PS2 / Free McBoot
