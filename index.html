@@ -1,13 +1,822 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MGC.app | Home</title>
-    <link rel="stylesheet" href="styles.css">
-    <script src="main.js" defer></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Goose Zoom</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111827;
+      --panel: #1f2937;
+      --ink: #f8fafc;
+      --muted: #cbd5e1;
+      --gold: #fbbf24;
+      --green: #34d399;
+      --danger: #fb7185;
+      --sky: #8ec5ff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(52, 211, 153, 0.16), transparent 28rem),
+        radial-gradient(circle at 80% 20%, rgba(251, 191, 36, 0.18), transparent 24rem),
+        var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    main {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      height: 100vh;
+      padding: 14px;
+      gap: 10px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.25rem, 3vw, 2rem);
+      letter-spacing: 0;
+      line-height: 1;
+    }
+
+    .tagline {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .hud {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: end;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .pill {
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(31, 41, 55, 0.82);
+      border-radius: 8px;
+      padding: 8px 10px;
+      min-width: 92px;
+      text-align: center;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+    }
+
+    .pill strong {
+      display: block;
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .pill span {
+      display: block;
+      margin-top: 2px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+    }
+
+    .stage {
+      position: relative;
+      min-height: 0;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      overflow: hidden;
+      background: linear-gradient(#84c8ff, #b7e6ff 48%, #579456 49%, #33724a);
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      pointer-events: none;
+    }
+
+    .message {
+      width: min(560px, 100%);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.9);
+      padding: 18px;
+      text-align: center;
+      box-shadow: 0 22px 60px rgba(0, 0, 0, 0.38);
+      backdrop-filter: blur(10px);
+    }
+
+    .message h2 {
+      margin: 0 0 8px;
+      font-size: clamp(1.5rem, 5vw, 2.4rem);
+    }
+
+    .message p {
+      margin: 8px auto 0;
+      color: var(--muted);
+      max-width: 42rem;
+      line-height: 1.45;
+    }
+
+    .keys {
+      color: var(--ink);
+      font-weight: 800;
+    }
+
+    @media (max-width: 700px) {
+      main {
+        padding: 8px;
+      }
+
+      header {
+        grid-template-columns: 1fr;
+      }
+
+      .hud {
+        justify-content: stretch;
+      }
+
+      .pill {
+        flex: 1 1 94px;
+        padding: 7px 8px;
+      }
+    }
+  </style>
 </head>
-<body data-page="home">
-    <main id="app"></main>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Goose Zoom</h1>
+        <p class="tagline">Doom-ish lanes, Soldat-ish hopping, one goose chasing a golden egg.</p>
+      </div>
+      <div class="hud" aria-live="polite">
+        <div class="pill"><strong>Egg</strong><span id="egg">0 / 100</span></div>
+        <div class="pill"><strong>Frogs</strong><span id="frogs">0</span></div>
+        <div class="pill"><strong>Rats</strong><span id="rats">0</span></div>
+        <div class="pill"><strong>Kernel</strong><span id="kernel">blind</span></div>
+        <div class="pill"><strong>Health</strong><span id="health">100</span></div>
+      </div>
+    </header>
+
+    <section class="stage">
+      <canvas id="game" width="1280" height="720" aria-label="Goose Zoom game canvas"></canvas>
+      <div id="overlay" class="overlay">
+        <div class="message">
+          <h2>Spherai Spawned an Egg</h2>
+          <p>
+            Move with <span class="keys">WASD</span> or arrows, jump with <span class="keys">Space</span>,
+            shoot frogs with <span class="keys">J</span>, dash with <span class="keys">Shift</span>.
+            Hatch the OG goose, power the honk-cannon with frogs, and turn rats into golden egg energy.
+          </p>
+          <p>Press <span class="keys">Enter</span> to begin.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const canvas = document.querySelector("#game");
+    const ctx = canvas.getContext("2d");
+    const eggEl = document.querySelector("#egg");
+    const frogsEl = document.querySelector("#frogs");
+    const ratsEl = document.querySelector("#rats");
+    const kernelEl = document.querySelector("#kernel");
+    const healthEl = document.querySelector("#health");
+    const overlay = document.querySelector("#overlay");
+
+    const keys = new Set();
+    const world = { w: 1280, h: 720, gravity: 1900 };
+    const rng = (min, max) => min + Math.random() * (max - min);
+    const gooseAdjectives = ["Warm", "Velvet", "Brass", "Moss", "Quiet", "Tidal", "Cinder", "Lattice"];
+    const gooseNouns = ["Goose", "Clerk", "Archivist", "Guide", "Witness", "Seeder", "Companion", "Honk"];
+    const kernelColors = {
+      blind: "#7a9bb1",
+      sighted: "#7ae7c7",
+      resonant: "#b0a6ff",
+      hatched: "#ffd075",
+    };
+
+    let state;
+    let last = 0;
+
+    const platforms = [
+      { x: 0, y: 662, w: 1280, h: 58 },
+      { x: 90, y: 540, w: 230, h: 26 },
+      { x: 410, y: 478, w: 250, h: 26 },
+      { x: 760, y: 535, w: 285, h: 26 },
+      { x: 1010, y: 410, w: 190, h: 24 },
+      { x: 210, y: 360, w: 210, h: 24 },
+      { x: 545, y: 300, w: 220, h: 24 },
+      { x: 850, y: 255, w: 180, h: 24 },
+      { x: 60, y: 220, w: 150, h: 22 },
+    ];
+
+    function hashText(text) {
+      let hash = 2166136261;
+      for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return hash >>> 0;
+    }
+
+    function deriveGoosePersona() {
+      const seed = hashText(`${Date.now()}-${Math.random()}-spherai-og-goose`);
+      const adjective = gooseAdjectives[seed % gooseAdjectives.length];
+      const noun = gooseNouns[(seed >>> 4) % gooseNouns.length];
+      return {
+        seed: seed.toString(16).padStart(8, "0"),
+        name: `${adjective} ${noun}`,
+      };
+    }
+
+    function kernelFromCoherence(coherence) {
+      if (coherence < 18) return "blind";
+      if (coherence < 42) return "sighted";
+      if (coherence < 72) return "resonant";
+      return "hatched";
+    }
+
+    function kernelShotDamage(kernel) {
+      if (kernel === "hatched") return 3;
+      if (kernel === "resonant") return 2;
+      return 1;
+    }
+
+    function newGame() {
+      const persona = deriveGoosePersona();
+      state = {
+        phase: "playing",
+        time: 0,
+        egg: 0,
+        killed: 0,
+        coherence: 0,
+        kernel: "blind",
+        persona,
+        spawnRat: 0.4,
+        spawnFrog: 0.9,
+        screenShake: 0,
+        goose: {
+          x: 135,
+          y: 605,
+          vx: 0,
+          vy: 0,
+          w: 42,
+          h: 44,
+          facing: 1,
+          grounded: false,
+          health: 100,
+          frogs: 6,
+          cooldown: 0,
+          dash: 0,
+          hurt: 0,
+          name: persona.name,
+        },
+        rats: [],
+        frogs: [],
+        shots: [],
+        sparks: [],
+      };
+      for (let i = 0; i < 5; i++) spawnRat();
+      for (let i = 0; i < 6; i++) spawnFrog();
+      overlay.style.display = "none";
+      burst(170, 612, kernelColors.blind, 20);
+    }
+
+    function showOverlay(title, body) {
+      overlay.querySelector("h2").textContent = title;
+      overlay.querySelectorAll("p")[0].innerHTML = body;
+      overlay.querySelectorAll("p")[1].innerHTML = 'Press <span class="keys">Enter</span> to play again.';
+      overlay.style.display = "grid";
+    }
+
+    function spawnRat() {
+      const side = Math.random() > 0.5 ? 1 : -1;
+      state.rats.push({
+        x: side > 0 ? world.w + 40 : -80,
+        y: 620,
+        vx: rng(80, 160) * -side,
+        vy: 0,
+        w: 34,
+        h: 28,
+        hp: 2 + Math.floor(state.time / 35),
+        bite: 0,
+        hop: rng(0.2, 1.4),
+      });
+    }
+
+    function spawnFrog() {
+      const p = platforms[Math.floor(rng(1, platforms.length))];
+      state.frogs.push({
+        x: rng(p.x + 18, p.x + p.w - 18),
+        y: p.y - 20,
+        w: 24,
+        h: 18,
+        bob: rng(0, 9),
+      });
+    }
+
+    function rects(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function stepBody(body, dt) {
+      body.x += body.vx * dt;
+      for (const p of platforms) {
+        if (rects(body, p)) {
+          if (body.vx > 0) body.x = p.x - body.w;
+          if (body.vx < 0) body.x = p.x + p.w;
+          body.vx *= -0.18;
+        }
+      }
+
+      body.vy += world.gravity * dt;
+      body.y += body.vy * dt;
+      body.grounded = false;
+      for (const p of platforms) {
+        if (rects(body, p)) {
+          if (body.vy > 0) {
+            body.y = p.y - body.h;
+            body.vy = 0;
+            body.grounded = true;
+          } else if (body.vy < 0) {
+            body.y = p.y + p.h;
+            body.vy = 0;
+          }
+        }
+      }
+
+      body.x = Math.max(0, Math.min(world.w - body.w, body.x));
+    }
+
+    function shoot() {
+      const g = state.goose;
+      if (g.cooldown > 0 || g.frogs <= 0) return;
+      g.frogs -= 1;
+      g.cooldown = 0.18;
+      state.shots.push({
+        x: g.x + g.w / 2 + g.facing * 24,
+        y: g.y + 18,
+        vx: g.facing * 820,
+        vy: -65,
+        w: 22,
+        h: 12,
+        life: 1.2,
+        damage: kernelShotDamage(state.kernel),
+        kernel: state.kernel,
+      });
+      burst(g.x + g.w / 2, g.y + 20, kernelColors[state.kernel], 8 + shotSparkBonus());
+    }
+
+    function shotSparkBonus() {
+      if (!state) return 0;
+      if (state.kernel === "hatched") return 10;
+      if (state.kernel === "resonant") return 5;
+      return 0;
+    }
+
+    function burst(x, y, color, count) {
+      for (let i = 0; i < count; i++) {
+        state.sparks.push({
+          x,
+          y,
+          vx: rng(-190, 190),
+          vy: rng(-230, 70),
+          life: rng(0.25, 0.65),
+          color,
+        });
+      }
+    }
+
+    function update(dt) {
+      if (!state || state.phase !== "playing") return;
+      state.time += dt;
+      const previousKernel = state.kernel;
+      state.coherence = Math.min(100, state.egg * 0.72 + state.killed * 3 + state.goose.frogs * 0.45);
+      state.kernel = kernelFromCoherence(state.coherence);
+      if (state.kernel !== previousKernel) {
+        state.screenShake = 7;
+        burst(state.goose.x + state.goose.w / 2, state.goose.y + 12, kernelColors[state.kernel], 28);
+      }
+      state.spawnRat -= dt;
+      state.spawnFrog -= dt;
+      state.screenShake = Math.max(0, state.screenShake - dt * 25);
+
+      if (state.spawnRat <= 0) {
+        spawnRat();
+        state.spawnRat = Math.max(0.55, 2.1 - state.time * 0.015);
+      }
+      if (state.spawnFrog <= 0 && state.frogs.length < 9) {
+        spawnFrog();
+        state.spawnFrog = rng(2.2, 4.2);
+      }
+
+      const g = state.goose;
+      g.cooldown = Math.max(0, g.cooldown - dt);
+      g.hurt = Math.max(0, g.hurt - dt);
+      g.dash = Math.max(0, g.dash - dt);
+
+      const left = keys.has("ArrowLeft") || keys.has("KeyA");
+      const right = keys.has("ArrowRight") || keys.has("KeyD");
+      const up = keys.has("ArrowUp") || keys.has("KeyW");
+      const dash = keys.has("ShiftLeft") || keys.has("ShiftRight");
+      const wantJump = keys.has("Space") || up;
+      const move = (right ? 1 : 0) - (left ? 1 : 0);
+
+      if (move !== 0) g.facing = move;
+      const accel = g.grounded ? 2500 : 1200;
+      g.vx += move * accel * dt;
+      g.vx *= g.grounded ? 0.82 : 0.96;
+      if (dash && g.dash <= 0 && move !== 0) {
+        g.vx = move * 620;
+        g.dash = 0.8;
+        burst(g.x + g.w / 2, g.y + g.h, "#ffffff", 10);
+      }
+      if (wantJump && g.grounded) g.vy = -690;
+      if (keys.has("KeyJ") || keys.has("KeyK")) shoot();
+      stepBody(g, dt);
+
+      for (const frog of state.frogs) frog.bob += dt * 7;
+      state.frogs = state.frogs.filter(frog => {
+        if (rects(g, frog)) {
+          g.frogs += 4;
+          state.coherence = Math.min(100, state.coherence + 3);
+          burst(frog.x, frog.y, kernelColors[state.kernel], 14);
+          return false;
+        }
+        return true;
+      });
+
+      for (const shot of state.shots) {
+        shot.life -= dt;
+        shot.vy += world.gravity * 0.18 * dt;
+        shot.x += shot.vx * dt;
+        shot.y += shot.vy * dt;
+      }
+
+      for (const rat of state.rats) {
+        rat.hop -= dt;
+        rat.bite = Math.max(0, rat.bite - dt);
+        const target = g.x + g.w / 2;
+        rat.vx += Math.sign(target - rat.x) * 180 * dt;
+        rat.vx = Math.max(-210, Math.min(210, rat.vx));
+        if (rat.grounded && rat.hop <= 0) {
+          rat.vy = -rng(360, 570);
+          rat.hop = rng(0.55, 1.5);
+        }
+        stepBody(rat, dt);
+        if (rects(g, rat) && rat.bite <= 0) {
+          rat.bite = 0.72;
+          g.health -= 9;
+          g.hurt = 0.28;
+          g.vx += Math.sign(g.x - rat.x) * 330;
+          g.vy = -260;
+          state.screenShake = 6;
+          burst(g.x + g.w / 2, g.y + 20, "#fb7185", 12);
+        }
+      }
+
+      for (const shot of state.shots) {
+        for (const rat of state.rats) {
+          if (shot.life > 0 && rects(shot, rat)) {
+            shot.life = 0;
+            rat.hp -= shot.damage;
+            rat.vx += Math.sign(shot.vx) * 230;
+            rat.vy = -230;
+            burst(rat.x + rat.w / 2, rat.y + 10, kernelColors[shot.kernel], 10 + shot.damage * 3);
+          }
+        }
+      }
+
+      state.rats = state.rats.filter(rat => {
+        if (rat.hp <= 0) {
+          state.killed += 1;
+          state.egg = Math.min(100, state.egg + 9 + (state.kernel === "hatched" ? 4 : 0));
+          state.goose.frogs += 1;
+          state.screenShake = 4;
+          burst(rat.x + rat.w / 2, rat.y + rat.h / 2, "#fbbf24", 18);
+          return false;
+        }
+        return rat.y < world.h + 120;
+      });
+      state.shots = state.shots.filter(shot => shot.life > 0 && shot.x > -60 && shot.x < world.w + 60);
+
+      for (const s of state.sparks) {
+        s.life -= dt;
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        s.vy += world.gravity * 0.55 * dt;
+      }
+      state.sparks = state.sparks.filter(s => s.life > 0);
+
+      if (g.health <= 0) {
+        state.phase = "lost";
+        showOverlay("The Nest Falls Silent", 'The rats overwhelmed the goose before the golden egg could arrive.');
+      }
+      if (state.egg >= 100) {
+        state.phase = "won";
+        showOverlay("Golden Egg Achieved", `${state.persona.name} reached <span class="keys">hatched</span> coherence and became an improbable radiant dynasty.`);
+      }
+      syncHud();
+    }
+
+    function syncHud() {
+      if (!state) return;
+      eggEl.textContent = `${Math.floor(state.egg)} / 100`;
+      frogsEl.textContent = state.goose.frogs;
+      ratsEl.textContent = state.killed;
+      kernelEl.textContent = state.kernel;
+      kernelEl.style.color = kernelColors[state.kernel];
+      healthEl.textContent = Math.max(0, Math.ceil(state.goose.health));
+    }
+
+    function drawGoose(g) {
+      ctx.save();
+      ctx.translate(g.x + g.w / 2, g.y + g.h / 2);
+      ctx.scale(g.facing, 1);
+      ctx.fillStyle = g.hurt > 0 ? "#fecdd3" : "#ffffff";
+      ctx.beginPath();
+      ctx.ellipse(0, 6, 22, 18, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(10, -16, 15, 13, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-8, -6);
+      ctx.quadraticCurve(10, -34, 23, -23);
+      ctx.stroke();
+      ctx.fillStyle = "#fb923c";
+      ctx.beginPath();
+      ctx.moveTo(23, -20);
+      ctx.lineTo(39, -15);
+      ctx.lineTo(23, -10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#111827";
+      ctx.fillRect(12, -20, 4, 4);
+      ctx.strokeStyle = "#fbbf24";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-9, 22);
+      ctx.lineTo(-15, 32);
+      ctx.moveTo(10, 22);
+      ctx.lineTo(15, 32);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawRat(rat) {
+      ctx.save();
+      ctx.translate(rat.x + rat.w / 2, rat.y + rat.h / 2);
+      ctx.scale(rat.vx < 0 ? -1 : 1, 1);
+      ctx.fillStyle = "#57534e";
+      ctx.beginPath();
+      ctx.ellipse(0, 4, 18, 13, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#78716c";
+      ctx.beginPath();
+      ctx.arc(12, -4, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fda4af";
+      ctx.beginPath();
+      ctx.arc(18, -11, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#fda4af";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(-17, 6);
+      ctx.quadraticCurve(-30, -2, -42, 9);
+      ctx.stroke();
+      ctx.fillStyle = "#111827";
+      ctx.fillRect(13, -7, 3, 3);
+      ctx.restore();
+    }
+
+    function drawFrog(frog) {
+      const y = frog.y + Math.sin(frog.bob) * 4;
+      ctx.fillStyle = "#22c55e";
+      ctx.beginPath();
+      ctx.ellipse(frog.x + 12, y + 10, 15, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#86efac";
+      ctx.beginPath();
+      ctx.arc(frog.x + 5, y + 3, 6, 0, Math.PI * 2);
+      ctx.arc(frog.x + 18, y + 3, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#111827";
+      ctx.fillRect(frog.x + 4, y + 2, 3, 3);
+      ctx.fillRect(frog.x + 17, y + 2, 3, 3);
+    }
+
+    function drawSpheraiSpawn(time) {
+      const cx = world.w / 2;
+      const cy = 442 + Math.sin(time * 2.4) * 8;
+      ctx.save();
+      ctx.fillStyle = "rgba(17, 24, 39, 0.24)";
+      ctx.beginPath();
+      ctx.ellipse(cx, 602, 135, 24, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(167, 243, 208, 0.84)";
+      ctx.lineWidth = 5;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, 92 + i * 24, 32 + i * 10, time * 0.6 + i, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "#fbbf24";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 18, 52, 72, -0.08, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fde68a";
+      ctx.beginPath();
+      ctx.ellipse(cx - 17, cy - 8, 14, 32, -0.35, 0, Math.PI * 2);
+      ctx.fill();
+
+      drawGoose({
+        x: cx - 22,
+        y: cy - 150,
+        w: 42,
+        h: 44,
+        facing: Math.sin(time * 2) > 0 ? 1 : -1,
+        hurt: 0,
+      });
+
+      ctx.fillStyle = "rgba(17, 24, 39, 0.75)";
+      ctx.font = "800 24px ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Spherai Egg Spawner", cx, cy + 125);
+      ctx.restore();
+    }
+
+    function drawKernelField(time) {
+      if (!state) return;
+      const g = state.goose;
+      const cx = g.x + g.w / 2;
+      const cy = g.y + g.h / 2;
+      const color = kernelColors[state.kernel];
+      const pulse = Math.sin(time * 5) * 0.5 + 0.5;
+      const radius = 38 + state.coherence * 0.55 + pulse * 18;
+
+      ctx.save();
+      ctx.globalAlpha = 0.18 + pulse * 0.14;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      if (state.kernel === "resonant" || state.kernel === "hatched") {
+        ctx.globalAlpha = 0.22;
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, radius + i * 18, 18 + i * 10, time * 0.7 + i, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, world.w, world.h);
+      const sceneTime = state?.time ?? performance.now() / 1000;
+      ctx.save();
+      if (state?.screenShake > 0) {
+        ctx.translate(rng(-state.screenShake, state.screenShake), rng(-state.screenShake, state.screenShake));
+      }
+
+      const sky = ctx.createLinearGradient(0, 0, 0, world.h);
+      sky.addColorStop(0, "#7dd3fc");
+      sky.addColorStop(0.58, "#bae6fd");
+      sky.addColorStop(0.59, "#4d8b4c");
+      sky.addColorStop(1, "#1f5f40");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, world.w, world.h);
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+      for (let i = 0; i < 9; i++) {
+        const x = (i * 173 + sceneTime * 18) % (world.w + 220) - 120;
+        const y = 55 + (i % 4) * 36;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 52, 15, 0, 0, Math.PI * 2);
+        ctx.ellipse(x + 35, y + 4, 44, 13, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      for (const p of platforms) {
+        ctx.fillStyle = "#194935";
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+        ctx.fillStyle = "#46a35f";
+        ctx.fillRect(p.x, p.y, p.w, 7);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
+        ctx.fillRect(p.x, p.y + p.h - 4, p.w, 4);
+      }
+
+      if (state) {
+        for (const frog of state.frogs) drawFrog(frog);
+      for (const shot of state.shots) {
+          ctx.fillStyle = kernelColors[shot.kernel] ?? "#a7f3d0";
+          ctx.beginPath();
+          ctx.ellipse(shot.x + shot.w / 2, shot.y + shot.h / 2, 14, 8, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#064e3b";
+          ctx.fillRect(shot.x + 7, shot.y + 3, 3, 3);
+        }
+        for (const rat of state.rats) drawRat(rat);
+        drawKernelField(sceneTime);
+        drawGoose(state.goose);
+        for (const s of state.sparks) {
+          ctx.globalAlpha = Math.max(0, s.life * 2.2);
+          ctx.fillStyle = s.color;
+          ctx.fillRect(s.x, s.y, 4, 4);
+          ctx.globalAlpha = 1;
+        }
+
+        ctx.fillStyle = "rgba(17, 24, 39, 0.5)";
+        ctx.fillRect(24, 24, 260, 14);
+        ctx.fillStyle = "#fbbf24";
+        ctx.fillRect(24, 24, 260 * (state.egg / 100), 14);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+        ctx.strokeRect(24, 24, 260, 14);
+
+        ctx.fillStyle = "rgba(17, 24, 39, 0.68)";
+        ctx.font = "800 20px ui-sans-serif, system-ui, sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText(`${state.persona.name} | ${state.kernel} coherence`, 24, 62);
+      } else {
+        drawSpheraiSpawn(sceneTime);
+      }
+
+      ctx.restore();
+    }
+
+    function loop(now) {
+      const dt = Math.min(0.033, (now - last) / 1000 || 0);
+      last = now;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = world.w / world.h;
+      const current = rect.width / rect.height;
+      if (current > ratio) {
+        canvas.style.width = `${rect.height * ratio}px`;
+        canvas.style.height = "100%";
+        canvas.style.margin = "0 auto";
+      } else {
+        canvas.style.width = "100%";
+        canvas.style.height = `${rect.width / ratio}px`;
+        canvas.style.margin = "auto 0";
+      }
+    }
+
+    addEventListener("keydown", event => {
+      keys.add(event.code);
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"].includes(event.code)) event.preventDefault();
+      if (event.code === "Enter" && (!state || state.phase !== "playing")) newGame();
+    });
+
+    addEventListener("keyup", event => keys.delete(event.code));
+    addEventListener("resize", resizeCanvas);
+
+    resizeCanvas();
+    syncHud();
+    requestAnimationFrame(loop);
+  </script>
 </body>
 </html>
